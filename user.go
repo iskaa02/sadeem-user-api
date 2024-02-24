@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -13,7 +14,7 @@ import (
 
 type User struct {
 	ID             string `json:"id" db:"id"`
-	Name           string `json:"name" db:"name"`
+	Username       string `json:"username" db:"username"`
 	Email          string `json:"email" db:"email"`
 	Image          string `json:"image" db:"image"`
 	HashedPassword string `json:"_" db:"hashed_password"`
@@ -23,17 +24,17 @@ func registerUserRoute(r chi.Router, db *sqlx.DB) {
 	// require auth
 	r.Group(func(authRouter chi.Router) {
 		authRouter.Use(auth.RequireAuthMiddleWare)
-		authRouter.Get("/me", func(w http.ResponseWriter, r *http.Request) {
-			id := r.Context().Value(auth.UserContextKey).(string)
+		authRouter.Get("users/me", func(w http.ResponseWriter, r *http.Request) {
+			id := r.Context().Value(auth.UserIDContextKey).(string)
 			getUser(db, id)
 		})
-		authRouter.Put("/me", func(w http.ResponseWriter, r *http.Request) {
-			id := r.Context().Value(auth.UserContextKey).(string)
+		authRouter.Put("users/me", func(w http.ResponseWriter, r *http.Request) {
+			id := r.Context().Value(auth.UserIDContextKey).(string)
 			u := &User{}
 			updateUser(db, id, u)
 		})
-		authRouter.Post("/change_password", func(w http.ResponseWriter, r *http.Request) {
-			id := r.Context().Value(auth.UserContextKey).(string)
+		authRouter.Post("users/me/change_password", func(w http.ResponseWriter, r *http.Request) {
+			id := r.Context().Value(auth.UserIDContextKey).(string)
 			oldPassword := ""
 			newPassowrd := ""
 			changePassword(db, id, oldPassword, newPassowrd)
@@ -44,7 +45,7 @@ func registerUserRoute(r chi.Router, db *sqlx.DB) {
 		noAuth.Post("/login", func(w http.ResponseWriter, r *http.Request) {
 			data := map[string]string{}
 			json.NewDecoder(r.Body).Decode(&data)
-			token, err := login(db, data["usernameOrEmail"], data["password"])
+			token, err := login(db, data["email"], data["username"], data["password"])
 			if err != nil {
 				w.WriteHeader(400)
 				return
@@ -66,7 +67,7 @@ func registerUserRoute(r chi.Router, db *sqlx.DB) {
 		})
 	})
 	// anyone can see
-	r.Get("/list", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/users/list", func(w http.ResponseWriter, r *http.Request) {
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		page--
 		if page < 0 {
@@ -76,9 +77,17 @@ func registerUserRoute(r chi.Router, db *sqlx.DB) {
 	})
 }
 
-func login(db *sqlx.DB, usernameOrEmail, password string) (string, error) {
+func login(db *sqlx.DB, username, email, password string) (string, error) {
 	user := &User{}
-	err := db.Select(&user, "SELECT * FROM user WHERE email=$1", usernameOrEmail)
+	var err error = nil
+	if username == "" && email == "" {
+		err = errors.New("Username and email cannot be empty")
+	}
+	if email == "" {
+		err = db.Select(&user, "SELECT * FROM user WHERE email=$1", email)
+	} else {
+		err = db.Select(&user, "SELECT * FROM user WHERE username=$1", username)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -99,13 +108,14 @@ func register(db *sqlx.DB, username, email, password string) (string, error) {
 	return token, nil
 }
 
-func getUser(db *sqlx.DB, id string) {
-	u := &User{}
-	db.Select(u, "SELECT id,name,email FROM user WHERE id=$1", id)
+func getUser(db *sqlx.DB, id string) User {
+	u := User{}
+	db.Select(&u, "SELECT id,username,email FROM user WHERE id=$1", id)
+	return u
 }
 
 func updateUser(db *sqlx.DB, id string, u *User) error {
-	_, err := db.Exec("UPDATE user SET name=$1,email=$2")
+	_, err := db.Exec("UPDATE user SET username=$1,email=$2")
 	if err != nil {
 		return err
 	}
@@ -144,9 +154,17 @@ func changePassword(db *sqlx.DB, id, oldPassword, newPassowrd string) error {
 
 func listUsers(db *sqlx.DB, page int) error {
 	users := []User{}
-	err := db.Select(&users, "SELECT * FROM user LIMIT 10 OFFSET=$1", page*10)
+	err := db.Select(&users, "SELECT * FROM user LIMIT 10 OFFSET=$1 SORT BY name", page*10)
 	if err != nil {
 		return err
 	}
 	return err
+}
+
+func categorizeUser(db *sqlx.DB, userID, categoryID string) {
+	db.Exec("INSERT INTO user_category(userID,categoryID) VALUES($1,$2)", userID, categoryID)
+}
+
+func uncategorizeUser(db *sqlx.DB, userID, categoryID string) {
+	db.Exec("DELETE FROM user_category WHERE userID=$1 AND categoryID=$2", userID, categoryID)
 }
