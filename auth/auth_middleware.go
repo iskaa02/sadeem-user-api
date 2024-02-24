@@ -25,7 +25,7 @@ func RequireAdminMiddleWare(db *sqlx.DB) func(next http.Handler) http.Handler {
 				// w.Write(string)
 				return
 			}
-			ctx := context.WithValue(r.Context(), adminContextKey, id)
+			ctx := context.WithValue(r.Context(), AdminContextKey, id)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -41,7 +41,22 @@ func RequireAuthMiddleWare(next http.Handler) http.Handler {
 			// w.Write(string)
 			return
 		}
-		ctx := context.WithValue(r.Context(), userContextKey, id)
+		ctx := context.WithValue(r.Context(), UserContextKey, id)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func RequireNoAuthMiddleWare(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := r.Header.Get("Authorization")
+		token = strings.Trim(token, "Bearer")
+		id, isAuth := isAuthenticated(token)
+		if isAuth {
+			w.WriteHeader(http.StatusOK)
+			// w.Write(string)
+			return
+		}
+		ctx := context.WithValue(r.Context(), UserContextKey, id)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

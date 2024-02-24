@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -38,6 +39,33 @@ func registerUserRoute(r chi.Router, db *sqlx.DB) {
 			changePassword(db, id, oldPassword, newPassowrd)
 		})
 	})
+	// require guest
+	r.Group(func(noAuth chi.Router) {
+		noAuth.Post("/login", func(w http.ResponseWriter, r *http.Request) {
+			data := map[string]string{}
+			json.NewDecoder(r.Body).Decode(&data)
+			token, err := login(db, data["usernameOrEmail"], data["password"])
+			if err != nil {
+				w.WriteHeader(400)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]string{token: token})
+		})
+
+		noAuth.Post("/register", func(w http.ResponseWriter, r *http.Request) {
+			data := map[string]string{}
+			json.NewDecoder(r.Body).Decode(&data)
+			token, err := register(db, data["username"], data["email"], data["password"])
+			if err != nil {
+				w.WriteHeader(400)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]string{token: token})
+		})
+	})
+	// anyone can see
 	r.Get("/list", func(w http.ResponseWriter, r *http.Request) {
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		page--
