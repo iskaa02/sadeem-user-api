@@ -43,12 +43,12 @@ func ParseToken(token string) (string, error) {
 func isAdmin(token string, db *sqlx.DB) (string, bool) {
 	id, err := ParseToken(token)
 	if err != nil {
-		return "", false
+		return id, false
 	}
 	exists := false
 	row, err := db.Query("SELECT 1 FROM admin WHERE user_id=$1", id)
 	if err != nil {
-		return "", false
+		return id, false
 	}
 	row.Scan(&exists)
 	return id, exists
