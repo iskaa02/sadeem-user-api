@@ -1,11 +1,13 @@
 package auth
 
 import (
-	"context"
+	"errors"
 	"net/http"
 	"strings"
 
+	"github.com/iskaa02/sadeem-user-api/api_error"
 	"github.com/jmoiron/sqlx"
+	"github.com/labstack/echo/v4"
 )
 
 var (
@@ -14,50 +16,47 @@ var (
 )
 
 // HTTP middleware setting a value on the request context
-func ChekIsAdminMiddleWare(db *sqlx.DB, required bool) func(next http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			token := r.Header.Get("Authorization")
-			token = strings.Trim(token, "Bearer")
-			id, isAdmin := isAdmin(token, db)
-			if !isAdmin && required {
-				w.WriteHeader(http.StatusForbidden)
-				// w.Write(string)
-				return
+func LoadToken(db *sqlx.DB) func(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return echo.HandlerFunc(func(c echo.Context) error {
+			token := c.Request().Header.Get("Authorization")
+			if token != "" {
+				token = strings.Trim(token, "Bearer")
+				id, isAdmin := isAdmin(token, db)
+				c.Set(IsAdminContextKey, isAdmin)
+				c.Set(UserIDContextKey, id)
 			}
-			ctx := context.WithValue(r.Context(), IsAdminContextKey, isAdmin)
-			ctx = context.WithValue(ctx, UserIDContextKey, id)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			return next(c)
 		})
 	}
 }
 
-func RequireAuthMiddleWare(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get("Authorization")
-		token = strings.Trim(token, "Bearer")
-		id, isAuth := isAuthenticated(token)
-		if !isAuth {
-			w.WriteHeader(http.StatusForbidden)
-			// w.Write(string)
-			return
+func RequireAdmin(next echo.HandlerFunc) echo.HandlerFunc {
+	return echo.HandlerFunc(func(c echo.Context) error {
+		isAdmin, _ := c.Get(IsAdminContextKey).(bool)
+		if !isAdmin {
+			return api_error.NewForbiddenError("", errors.New(""))
 		}
-		ctx := context.WithValue(r.Context(), UserIDContextKey, id)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		return next(c)
 	})
 }
 
-func RequireNoAuthMiddleWare(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get("Authorization")
-		token = strings.Trim(token, "Bearer")
-		id, isAuth := isAuthenticated(token)
-		if isAuth {
-			w.WriteHeader(http.StatusOK)
-			// w.Write(string)
-			return
+func RequireAuthMiddleWare(next echo.HandlerFunc) echo.HandlerFunc {
+	return echo.HandlerFunc(func(c echo.Context) error {
+		userID, ok := c.Get(UserIDContextKey).(string)
+		if userID == "" || !ok {
+			return api_error.NewUnauthorizedError("", errors.New("User not authnticated"))
 		}
-		ctx := context.WithValue(r.Context(), UserIDContextKey, id)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		return next(c)
+	})
+}
+
+func RequireNoAuthMiddleWare(next echo.HandlerFunc) echo.HandlerFunc {
+	return echo.HandlerFunc(func(c echo.Context) error {
+		userID, _ := c.Get(UserIDContextKey).(string)
+		if userID != "" {
+			return c.NoContent(http.StatusOK)
+		}
+		return next(c)
 	})
 }

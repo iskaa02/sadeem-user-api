@@ -1,125 +1,79 @@
 package main
 
 import (
-	"encoding/json"
+	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
-	"strconv"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/guregu/null"
+	"github.com/iskaa02/sadeem-user-api/api_error"
 	"github.com/iskaa02/sadeem-user-api/auth"
 	"github.com/jmoiron/sqlx"
+	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type User struct {
-	ID             string `json:"id" db:"id"`
-	Username       string `json:"username" db:"username"`
-	Email          string `json:"email" db:"email"`
-	Image          string `json:"image" db:"image"`
-	HashedPassword string `json:"_" db:"hashed_password"`
+	ID             string      `json:"id" db:"id"`
+	Username       string      `json:"username" db:"username"`
+	Email          string      `json:"email" db:"email"`
+	ImagePath      null.String `json:"image_path" db:"image_path"`
+	HashedPassword string      `json:"-" db:"hashed_password"`
+}
+type ChangePasswordParams struct {
+	NewPassword string `json:"new_password"`
+	OldPassword string `json:"old_password"`
 }
 
-func registerUserRoute(r chi.Router, db *sqlx.DB) {
+func registerUserRoute(g *echo.Group, db *sqlx.DB) {
 	// require auth
-	r.Group(func(authRouter chi.Router) {
-		authRouter.Use(auth.RequireAuthMiddleWare)
-		authRouter.Get("users/me", func(w http.ResponseWriter, r *http.Request) {
-			id := r.Context().Value(auth.UserIDContextKey).(string)
-			getUser(db, id)
-		})
-		authRouter.Put("users/me", func(w http.ResponseWriter, r *http.Request) {
-			id := r.Context().Value(auth.UserIDContextKey).(string)
-			u := &User{}
-			updateUser(db, id, u)
-		})
-		authRouter.Post("users/me/change_password", func(w http.ResponseWriter, r *http.Request) {
-			id := r.Context().Value(auth.UserIDContextKey).(string)
-			oldPassword := ""
-			newPassowrd := ""
-			changePassword(db, id, oldPassword, newPassowrd)
-		})
-	})
-	// require guest
-	r.Group(func(noAuth chi.Router) {
-		noAuth.Post("/login", func(w http.ResponseWriter, r *http.Request) {
-			data := map[string]string{}
-			json.NewDecoder(r.Body).Decode(&data)
-			token, err := login(db, data["email"], data["username"], data["password"])
-			if err != nil {
-				w.WriteHeader(400)
-				return
-			}
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]string{token: token})
-		})
-
-		noAuth.Post("/register", func(w http.ResponseWriter, r *http.Request) {
-			data := map[string]string{}
-			json.NewDecoder(r.Body).Decode(&data)
-			token, err := register(db, data["username"], data["email"], data["password"])
-			if err != nil {
-				w.WriteHeader(400)
-				return
-			}
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]string{token: token})
-		})
-	})
-	// anyone can see
-	r.Get("/users/list", func(w http.ResponseWriter, r *http.Request) {
-		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-		page--
-		if page < 0 {
-			page = 0
+	g.GET("/me", func(c echo.Context) error {
+		id, _ := c.Get(auth.UserIDContextKey).(string)
+		u, err := getUser(db, id)
+		fmt.Println(err)
+		if err != nil {
+			return err
 		}
-		listUsers(db, page)
+		return c.JSON(200, u)
+	}, auth.RequireAuthMiddleWare)
+	g.PUT("/me", func(c echo.Context) error {
+		id := c.Get(auth.UserIDContextKey).(string)
+		u := &User{}
+		c.Bind(&u)
+		return updateUser(db, id, u)
+	}, auth.RequireAuthMiddleWare)
+	g.POST("/me/change_password", func(c echo.Context) error {
+		id := c.Get(auth.UserIDContextKey).(string)
+		data := ChangePasswordParams{}
+		c.Bind(&data)
+		return changePassword(db, id, data.OldPassword, data.NewPassword)
+	}, auth.RequireAuthMiddleWare)
+	g.POST("/me/change_image", func(c echo.Context) error {
+		id, _ := c.Get(auth.UserIDContextKey).(string)
+		return updateImage(db, c.Request(), id)
 	})
+
+	// anyone can see
 }
 
-func login(db *sqlx.DB, username, email, password string) (string, error) {
-	user := &User{}
-	var err error = nil
-	if username == "" && email == "" {
-		err = errors.New("Username and email cannot be empty")
-	}
-	if email == "" {
-		err = db.Select(&user, "SELECT * FROM user WHERE email=$1", email)
-	} else {
-		err = db.Select(&user, "SELECT * FROM user WHERE username=$1", username)
-	}
-	if err != nil {
-		return "", err
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(password)); err != nil {
-		return "", err
-	}
-	token := auth.GenerateToken(user.ID)
-	return token, nil
-}
-
-func register(db *sqlx.DB, username, email, password string) (string, error) {
-	id := ""
-	err := db.Get(&id, "INSERT INTO user(username,email,password) VALUES($1,$2,$3) RETURNING id", username, email, password)
-	if err != nil {
-		return "", err
-	}
-	token := auth.GenerateToken(id)
-	return token, nil
-}
-
-func getUser(db *sqlx.DB, id string) User {
+func getUser(db *sqlx.DB, id string) (User, error) {
 	u := User{}
-	db.Select(&u, "SELECT id,username,email FROM user WHERE id=$1", id)
-	return u
+	err := db.Get(&u, "SELECT id,username,email,image_path FROM users WHERE id=$1", id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return u, api_error.NewNotFoundError("user_not_found", err)
+		}
+	}
+	return u, err
 }
 
 func updateUser(db *sqlx.DB, id string, u *User) error {
-	_, err := db.Exec("UPDATE user SET username=$1,email=$2")
+	_, err := db.Exec("UPDATE users SET username=$1,email=$2 WHERE id=$3", u.Username, u.Email, id)
 	if err != nil {
 		return err
 	}
-	return nil
+	return err
 }
 
 func updateImage(db *sqlx.DB, r *http.Request, id string) error {
@@ -127,7 +81,7 @@ func updateImage(db *sqlx.DB, r *http.Request, id string) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec("UPDATE user SET image=$2 WHERE id=$1", id, filename)
+	_, err = db.Exec("UPDATE users SET image_path=$1 WHERE id=$2", filename, id)
 	if err != nil {
 		return err
 	}
@@ -136,35 +90,38 @@ func updateImage(db *sqlx.DB, r *http.Request, id string) error {
 
 func changePassword(db *sqlx.DB, id, oldPassword, newPassowrd string) error {
 	u := &User{}
-	err := db.Select(u, "SELECT * FROM user WERE id=$1", id)
+	err := db.Get(u, "SELECT * FROM users WHERE id=$1", id)
 	if err != nil {
 		return err
 	}
 	err = bcrypt.CompareHashAndPassword([]byte(u.HashedPassword), []byte(oldPassword))
+	fmt.Println(err)
 	if err != nil {
-		return err
+		return api_error.NewBadRequestError("old_password_do_not_match", errors.New("old password is not correct"))
 	}
 	newHashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassowrd), 10)
-	_, err = db.Exec("UPDATE user SET hashed_password=$2 WHERE id=$1", id, newHashedPassword)
+	_, err = db.Exec("UPDATE users SET hashed_password=$2 WHERE id=$1", id, newHashedPassword)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func listUsers(db *sqlx.DB, page int) error {
+func listUsers(db *sqlx.DB, page int) ([]User, error) {
 	users := []User{}
-	err := db.Select(&users, "SELECT * FROM user LIMIT 10 OFFSET=$1 SORT BY name", page*10)
+	err := db.Select(&users, "SELECT * FROM users ORDER BY username LIMIT 10 OFFSET $1 ", page*10)
 	if err != nil {
-		return err
+		return users, err
 	}
+	return users, err
+}
+
+func categorizeUser(db *sqlx.DB, userID, categoryID string) error {
+	_, err := db.Exec("INSERT INTO user_category(user_id,category_id) VALUES($1,$2)", userID, categoryID)
 	return err
 }
 
-func categorizeUser(db *sqlx.DB, userID, categoryID string) {
-	db.Exec("INSERT INTO user_category(userID,categoryID) VALUES($1,$2)", userID, categoryID)
-}
-
-func uncategorizeUser(db *sqlx.DB, userID, categoryID string) {
-	db.Exec("DELETE FROM user_category WHERE userID=$1 AND categoryID=$2", userID, categoryID)
+func uncategorizeUser(db *sqlx.DB, userID, categoryID string) error {
+	_, err := db.Exec("DELETE FROM user_category WHERE user_id=$1 AND category_id=$2", userID, categoryID)
+	return err
 }

@@ -1,55 +1,73 @@
 package main
 
 import (
-	"encoding/json"
 	"net/http"
+	"strconv"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/iskaa02/sadeem-user-api/auth"
 	"github.com/jmoiron/sqlx"
+	"github.com/labstack/echo/v4"
 )
 
-func registerAdminRoutes(r chi.Router, db *sqlx.DB) {
-	r.Use(auth.ChekIsAdminMiddleWare(db, true))
-	r.Put("/users/{id}", func(w http.ResponseWriter, r *http.Request) {
-		id := chi.URLParam(r, "id")
+func registerAdminRoutes(g *echo.Group, db *sqlx.DB) {
+	g.PUT("/users/:id", func(c echo.Context) error {
+		id := ""
+		echo.PathParamsBinder(c).String("id", &id)
 		u := User{}
-		_ = json.NewDecoder(r.Body).Decode(&u)
-		updateUser(db, id, &u)
+		c.Bind(&u)
+		return updateUser(db, id, &u)
 	})
-	r.Post("/category", func(w http.ResponseWriter, r *http.Request) {
-		c := Category{}
-		err := json.NewDecoder(r.Body).Decode(&c)
+	g.POST("/category", func(c echo.Context) error {
+		data := Category{}
+		err := c.Bind(&data)
 		if err != nil {
+			return err
 		}
-		addCategory(c.Name, c.Activated, db)
+		return addCategory(data.Name, data.Activated, db)
 	})
-	r.Put("/category/{id}", func(w http.ResponseWriter, r *http.Request) {
-		c := Category{}
-		id := chi.URLParam(r, "id")
-		err := json.NewDecoder(r.Body).Decode(&c)
+	g.PUT("/category/:id", func(c echo.Context) error {
+		data := Category{}
+		id := ""
+		echo.PathParamsBinder(c).String("id", &id)
+		err := c.Bind(&data)
 		if err != nil {
+			return err
 		}
-		updateCategory(id, c.Name, c.Activated, db)
+		return updateCategory(id, data.Name, data.Activated, db)
 	})
-	r.Delete("/category/{id}", func(w http.ResponseWriter, r *http.Request) {
-		id := chi.URLParam(r, "id")
-		err := deleteCategory(id, db)
-		if err != nil {
-			return
-		}
+	g.DELETE("/category/:id", func(c echo.Context) error {
+		// id := chi.URLParam(r, "id")
+		id := ""
+		echo.PathParamsBinder(c).String("id", &id)
+		return deleteCategory(id, db)
 	})
-	r.Post("/user/{id}/categorize", func(w http.ResponseWriter, r *http.Request) {
-		userID := chi.URLParam(r, "id")
+	g.POST("/user/:id/categorize", func(c echo.Context) error {
+		id := ""
+		echo.PathParamsBinder(c).String("id", &id)
 		data := map[string]string{}
-		json.NewDecoder(r.Body).Decode(&data)
-		categorizeUser(db, userID, data["category_id"])
+		if err := c.Bind(&data); err != nil {
+			return err
+		}
+		return categorizeUser(db, id, data["category_id"])
 	})
 
-	r.Post("/user/{id}/uncategorize", func(w http.ResponseWriter, r *http.Request) {
-		userID := chi.URLParam(r, "id")
+	g.POST("/user/:id/uncategorize", func(c echo.Context) error {
+		id := ""
+		echo.PathParamsBinder(c).String("id", &id)
 		data := map[string]string{}
-		json.NewDecoder(r.Body).Decode(&data)
-		uncategorizeUser(db, userID, data["category_id"])
+		c.Bind(&data)
+		return uncategorizeUser(db, id, data["category_id"])
+	})
+
+	g.GET("/users/list", func(c echo.Context) error {
+		page, _ := strconv.Atoi(c.Request().URL.Query().Get("page"))
+		page--
+		if page < 0 {
+			page = 0
+		}
+		users, err := listUsers(db, page)
+		if err != nil {
+			return err
+		}
+		return c.JSON(http.StatusOK, users)
 	})
 }

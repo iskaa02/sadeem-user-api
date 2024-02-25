@@ -1,37 +1,40 @@
 package main
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/iskaa02/sadeem-user-api/api_error"
 	"github.com/iskaa02/sadeem-user-api/auth"
 	"github.com/jmoiron/sqlx"
+	"github.com/labstack/echo/v4"
+	_ "github.com/lib/pq"
 )
 
 func main() {
-	db, err := sqlx.Connect("postgres", "user=foo dbname=bar sslmode=disable")
+	db, err := sqlx.Connect("postgres", "postgresql://postgres:password@localhost:5432?sslmode=disable")
 	if err != nil {
 		panic(err)
 	}
-	r := chi.NewMux()
-	r.Route("/api/user", func(r chi.Router) {
-		registerUserRoute(r, db)
-	})
-	r.Route("/api/", func(r chi.Router) {
-		registerAdminRoutes(r, db)
-	})
+	e := echo.New()
 
-	r.Get("/api/category", func(w http.ResponseWriter, r *http.Request) {
-		isAdmin := r.Context().Value(auth.IsAdminContextKey).(bool)
-		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	e.HTTPErrorHandler = api_error.GlobalErrorHandler
+
+	e.Use(auth.LoadToken(db))
+	registerAdminRoutes(e.Group("/api", auth.RequireAdmin), db)
+	registerUserRoute(e.Group("/api/users", auth.RequireAuthMiddleWare), db)
+	registerGuestRoute(e.Group("/api", auth.RequireNoAuthMiddleWare), db)
+
+	// anyone can see
+	e.GET("/api/category", func(c echo.Context) error {
+		isAdmin := c.Get(auth.IsAdminContextKey).(bool)
+		page, _ := strconv.Atoi(c.Request().URL.Query().Get("page"))
 		page -= 1
 		if page < 0 {
 			page = 0
 		}
 		result := listCategories(db, isAdmin, page)
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(result)
+		return c.JSON(http.StatusOK, result)
 	})
+	e.Start("localhost:3000")
 }
