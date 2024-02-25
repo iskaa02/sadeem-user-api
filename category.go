@@ -13,13 +13,13 @@ type Category struct {
 func listCategories(db *sqlx.DB, isAdmin bool, page int) []Category {
 	result := []Category{}
 	if isAdmin {
-		err := db.Select(&result, "SELECT * FROM category SORT BY name LIMIT 10 OFFSET $1 SORT BY name", page*10)
+		err := db.Select(&result, "SELECT * FROM category ORDER BY name LIMIT 10 OFFSET $1 ", page*10)
 		if err != nil {
 			return nil
 		}
 		return result
 	}
-	err := db.Select(&result, "SELECT * FROM category WHERE activated=true SORT BY name LIMIT 10 OFFSET $1 SORT BY name", page*10)
+	err := db.Select(&result, "SELECT * FROM category WHERE activated=true ORDER BY name LIMIT 10 OFFSET $1", page*10)
 	if err != nil {
 		return nil
 	}
