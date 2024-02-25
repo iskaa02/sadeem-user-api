@@ -1,11 +1,14 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"github.com/iskaa02/sadeem-user-api/api_error"
 )
 
 // return filename and error
@@ -19,16 +22,15 @@ func uploadFile(r *http.Request, id string) (string, error) {
 	defer file.Close()
 
 	// check if file is a png
-	buff := make([]byte, 512) // docs tell that it take only first 512 bytes into consideration
-	if _, err = file.Read(buff); err != nil {
-		fmt.Printf("error checking for file type: %s", err)
+	bytes, err := io.ReadAll(file)
+	if err != nil {
 		return "", err
 	}
-	Imagetype := http.DetectContentType(buff)
+	Imagetype := http.DetectContentType(bytes)
+	fmt.Println(Imagetype)
 	if Imagetype != "image/png" {
-		return "", err
+		return "", api_error.NewBadRequestError("image_type_png_only", errors.New(""))
 	}
-
 	// save to images/
 	filename := filepath.Join("images", id+".png")
 	dst, err := os.Create(filename)
@@ -37,7 +39,7 @@ func uploadFile(r *http.Request, id string) (string, error) {
 		return "", err
 	}
 	defer dst.Close()
-	_, err = io.Copy(dst, file)
+	_, err = dst.Write(bytes)
 	if err != nil {
 		fmt.Printf("error copying file: %s", err)
 		return "", err
