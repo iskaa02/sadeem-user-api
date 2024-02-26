@@ -9,6 +9,7 @@ import (
 	"github.com/iskaa02/sadeem-user-api/auth"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
+	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -36,6 +37,12 @@ func registerGuestRoute(g *echo.Group, db *sqlx.DB) {
 		}
 		token, err := register(db, data["username"], data["email"], data["password"])
 		if err != nil {
+			pgErr, ok := err.(*pq.Error)
+			if ok {
+				if pgErr.Code == "23505" {
+					return api_error.NewBadRequestError("username_or_email_already_exists", err)
+				}
+			}
 			return api_error.NewBadRequestError("", err)
 		}
 		return c.JSON(http.StatusOK, map[string]string{"token": token})
