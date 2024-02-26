@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/huandu/go-sqlbuilder"
@@ -13,7 +14,7 @@ import (
 )
 
 func main() {
-	db, err := sqlx.Connect("postgres", "postgresql://postgres:password@localhost:5432?sslmode=disable")
+	db, err := sqlx.Connect("postgres", os.Getenv("DB_SOURCE_NAME"))
 	if err != nil {
 		panic(err)
 	}
