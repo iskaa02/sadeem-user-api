@@ -46,11 +46,10 @@ func isAdmin(token string, db *sqlx.DB) (string, bool) {
 		return id, false
 	}
 	exists := false
-	row, err := db.Query("SELECT 1 FROM admin WHERE user_id=$1", id)
+	err = db.Get(&exists, "SELECT 1 FROM user_admin WHERE id=$1", id)
 	if err != nil {
 		return id, false
 	}
-	row.Scan(&exists)
 	return id, exists
 }
 
