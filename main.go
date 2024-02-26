@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/huandu/go-sqlbuilder"
 	"github.com/iskaa02/sadeem-user-api/api_error"
 	"github.com/iskaa02/sadeem-user-api/auth"
 	"github.com/jmoiron/sqlx"
@@ -17,7 +18,7 @@ func main() {
 		panic(err)
 	}
 	e := echo.New()
-
+	sqlbuilder.DefaultFlavor = sqlbuilder.PostgreSQL
 	e.HTTPErrorHandler = api_error.GlobalErrorHandler
 
 	e.Use(auth.LoadToken(db))
@@ -33,7 +34,11 @@ func main() {
 		if page < 0 {
 			page = 0
 		}
-		result := listCategories(db, isAdmin, page)
+		searchQuery := c.Request().URL.Query().Get("q")
+		result, err := listCategories(db, isAdmin, page, searchQuery)
+		if err != nil {
+			return err
+		}
 		return c.JSON(http.StatusOK, result)
 	})
 	e.Start("localhost:3000")

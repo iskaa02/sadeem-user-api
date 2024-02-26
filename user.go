@@ -3,14 +3,16 @@ package main
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
+	"net/mail"
 
 	"github.com/guregu/null"
+	"github.com/huandu/go-sqlbuilder"
 	"github.com/iskaa02/sadeem-user-api/api_error"
 	"github.com/iskaa02/sadeem-user-api/auth"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
+	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -30,8 +32,8 @@ func registerUserRoute(g *echo.Group, db *sqlx.DB) {
 	// require auth
 	g.GET("/me", func(c echo.Context) error {
 		id, _ := c.Get(auth.UserIDContextKey).(string)
-		u, err := getUser(db, id)
-		fmt.Println(err)
+		isAdmin, _ := c.Get(auth.IsAdminContextKey).(bool)
+		u, err := getUser(db, id, isAdmin)
 		if err != nil {
 			return err
 		}
@@ -40,13 +42,17 @@ func registerUserRoute(g *echo.Group, db *sqlx.DB) {
 	g.PUT("/me", func(c echo.Context) error {
 		id := c.Get(auth.UserIDContextKey).(string)
 		u := &User{}
-		c.Bind(&u)
+		if err := c.Bind(&u); err != nil {
+			return err
+		}
 		return updateUser(db, id, u)
 	}, auth.RequireAuthMiddleWare)
 	g.POST("/me/change_password", func(c echo.Context) error {
 		id := c.Get(auth.UserIDContextKey).(string)
 		data := ChangePasswordParams{}
-		c.Bind(&data)
+		if err := c.Bind(&data); err != nil {
+			return err
+		}
 		return changePassword(db, id, data.OldPassword, data.NewPassword)
 	}, auth.RequireAuthMiddleWare)
 	g.POST("/me/change_image", func(c echo.Context) error {
@@ -57,20 +63,49 @@ func registerUserRoute(g *echo.Group, db *sqlx.DB) {
 	// anyone can see
 }
 
-func getUser(db *sqlx.DB, id string) (User, error) {
-	u := User{}
+type GetUserRes struct {
+	User
+	Categories []Category `json:"category"`
+}
+
+func getUser(db *sqlx.DB, id string, isAdmin bool) (GetUserRes, error) {
+	u := GetUserRes{}
 	err := db.Get(&u, "SELECT id,username,email,image_path FROM users WHERE id=$1", id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return u, api_error.NewNotFoundError("user_not_found", err)
 		}
 	}
+	category, err := getUserCategory(db, id, isAdmin)
+	if err != nil {
+		return u, err
+	}
+	u.Categories = category
 	return u, err
 }
 
 func updateUser(db *sqlx.DB, id string, u *User) error {
-	_, err := db.Exec("UPDATE users SET username=$1,email=$2 WHERE id=$3", u.Username, u.Email, id)
+	sb := sqlbuilder.Update("users")
+	sb.Where(sb.EQ("id", id))
+	if u.Email != "" {
+		_, err := mail.ParseAddress(u.Email)
+		if err != nil {
+			return api_error.NewBadRequestError("invalid_email", err)
+		}
+		sb.SetMore(sb.Assign("email", u.Email))
+	}
+	if u.Username != "" {
+		sb.SetMore(sb.Assign("username", u.Username))
+	}
+	sql, args := sb.Build()
+	_, err := db.Exec(sql, args...)
 	if err != nil {
+		pgErr, ok := err.(*pq.Error)
+		if ok {
+			if pgErr.Code == "23505" {
+				return api_error.NewBadRequestError("username_or_email_already_exists", err)
+			}
+		}
 		return err
 	}
 	return err
@@ -95,7 +130,6 @@ func changePassword(db *sqlx.DB, id, oldPassword, newPassowrd string) error {
 		return err
 	}
 	err = bcrypt.CompareHashAndPassword([]byte(u.HashedPassword), []byte(oldPassword))
-	fmt.Println(err)
 	if err != nil {
 		return api_error.NewBadRequestError("old_password_do_not_match", errors.New("old password is not correct"))
 	}
@@ -107,21 +141,18 @@ func changePassword(db *sqlx.DB, id, oldPassword, newPassowrd string) error {
 	return nil
 }
 
-func listUsers(db *sqlx.DB, page int) ([]User, error) {
+func listUsers(db *sqlx.DB, page int, searchQuery string) ([]User, error) {
 	users := []User{}
-	err := db.Select(&users, "SELECT * FROM users ORDER BY username LIMIT 10 OFFSET $1 ", page*10)
-	if err != nil {
-		return users, err
+	var err error
+	sb := sqlbuilder.Select("*").
+		From("users").
+		Limit(10).
+		Offset(page * 10)
+
+	if searchQuery != "" {
+		sb.Where(sb.Like("username", "%"+searchQuery+"%"))
 	}
+	sql, args := sb.Build()
+	err = db.Select(&users, sql, args...)
 	return users, err
-}
-
-func categorizeUser(db *sqlx.DB, userID, categoryID string) error {
-	_, err := db.Exec("INSERT INTO user_category(user_id,category_id) VALUES($1,$2)", userID, categoryID)
-	return err
-}
-
-func uncategorizeUser(db *sqlx.DB, userID, categoryID string) error {
-	_, err := db.Exec("DELETE FROM user_category WHERE user_id=$1 AND category_id=$2", userID, categoryID)
-	return err
 }

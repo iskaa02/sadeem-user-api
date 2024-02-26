@@ -17,6 +17,8 @@ var translated_errors = map[string]I18n{
 	"user_not_found":                      {Ar: "المستخدم غير موجود", En: "User not found"},
 	"old_password_do_not_match":           {Ar: "", En: ""},
 	"image_type_png_only":                 {Ar: "", En: ""},
+	"category_already_exists":             {Ar: "", En: ""},
+	"username_or_email_already_exists":    {Ar: "", En: ""},
 }
 
 func (i I18n) Translate(lang string) string {
