@@ -41,5 +41,6 @@ func main() {
 		}
 		return c.JSON(http.StatusOK, result)
 	})
+	e.Static("/images", "./images")
 	e.Start("localhost:3000")
 }
