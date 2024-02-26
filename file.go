@@ -31,6 +31,14 @@ func uploadFile(r *http.Request, id string) (string, error) {
 	if Imagetype != "image/png" {
 		return "", api_error.NewBadRequestError("image_type_png_only", errors.New(""))
 	}
+	if _, err := os.Stat("./images"); os.IsNotExist(err) {
+		// Directory doesn't exist, create it
+		// 0755 sets permission (read, write, execute for owner, read and execute for group, and execute for others)
+		err := os.MkdirAll("./images", 0755)
+		if err != nil {
+			return "", err
+		}
+	}
 	// save to images/
 	filename := filepath.Join("images", id+".png")
 	dst, err := os.Create(filename)
