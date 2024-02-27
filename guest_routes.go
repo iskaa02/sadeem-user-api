@@ -4,10 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"net/mail"
 
 	"github.com/iskaa02/sadeem-user-api/api_error"
-	"github.com/iskaa02/sadeem-user-api/auth"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
 	"github.com/lib/pq"
