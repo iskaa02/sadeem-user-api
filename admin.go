@@ -1,9 +1,11 @@
 package main
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
+	"github.com/iskaa02/sadeem-user-api/api_error"
 	"github.com/iskaa02/sadeem-user-api/auth"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
@@ -49,34 +51,46 @@ func registerAdminRoutes(g *echo.Group, db *sqlx.DB) {
 		echo.PathParamsBinder(c).String("id", &id)
 		return deleteCategory(id, db)
 	})
-	g.POST("/users/:id/categorize", func(c echo.Context) error {
-		id := ""
-		echo.PathParamsBinder(c).String("id", &id)
+	g.POST("/users/:user_id/categorize", func(c echo.Context) error {
+		user_id := ""
+		echo.PathParamsBinder(c).String("user_id", &user_id)
 		data := map[string]string{}
 		if err := c.Bind(&data); err != nil {
 			return err
 		}
-		err := categorizeUser(db, id, data["category_id"])
+		if user_id == "" {
+			return api_error.NewBadRequestError("user_id_cannot_be_empty", errors.New("categorize user, empty user_id"))
+		}
+		if data["category_id"] == "" {
+			return api_error.NewBadRequestError("category_id_cannot_be_empty", errors.New("categorize user, empty category_id"))
+		}
+		err := categorizeUser(db, user_id, data["category_id"])
 		if err != nil {
 			pgErr, ok := err.(*pq.Error)
 			if ok {
 				// if user already cateogrized do nothing
 				if pgErr.Code == "23505" {
-					return nil
+					return c.NoContent(200)
 				}
 			}
 		}
 		return err
 	})
 
-	g.POST("/users/:id/uncategorize", func(c echo.Context) error {
-		id := ""
-		echo.PathParamsBinder(c).String("id", &id)
+	g.POST("/users/:user_id/uncategorize", func(c echo.Context) error {
+		user_id := ""
+		echo.PathParamsBinder(c).String("user_id", &user_id)
 		data := map[string]string{}
+		if user_id == "" {
+			return api_error.NewBadRequestError("user_id_cannot_be_empty", errors.New("uncategorize user, empty user_id"))
+		}
+		if data["category_id"] == "" {
+			return api_error.NewBadRequestError("category_id_cannot_be_empty", errors.New("uncategorize user, empty category_id"))
+		}
 		if err := c.Bind(&data); err != nil {
 			return err
 		}
-		return uncategorizeUser(db, id, data["category_id"])
+		return uncategorizeUser(db, user_id, data["category_id"])
 	})
 
 	g.GET("/users/list", func(c echo.Context) error {
