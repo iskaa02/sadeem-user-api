@@ -6,6 +6,17 @@
 
 Note that certain endpoints are restricted to users with admin privileges. These endpoints are denoted with "(admin only)" after the request method.
 
+Creating an admin is done manually by inserting a user_id into user_admin table.
+
+```sql
+-- Example
+INSERT INTO user_admin(id)
+VALUES(
+  SELECT id FROM users
+  WHERE email="admin@admin.com"
+);
+```
+
 **Endpoints**
 
 **GET Endpoints**
@@ -227,3 +238,5 @@ Note that certain endpoints are restricted to users with admin privileges. These
    ```bash
    export DB_SOURCE_NAME="postgresql://<username>:<password>@<host>:<port>/<database_name>"
    ```
+
+#
