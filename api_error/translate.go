@@ -15,10 +15,12 @@ var translated_errors = map[string]I18n{
 	"missing_both_email_and_username":     {Ar: "يفتقد كل من البريد الإلكتروني واسم المستخدم", En: "Missing both email and username"},
 	"invalid_email":                       {Ar: "بريد إلكتروني غير صالح", En: "Invalid email"},
 	"user_not_found":                      {Ar: "المستخدم غير موجود", En: "User not found"},
-	"old_password_do_not_match":           {Ar: "", En: ""},
-	"image_type_png_only":                 {Ar: "", En: ""},
-	"category_already_exists":             {Ar: "", En: ""},
-	"username_or_email_already_exists":    {Ar: "", En: ""},
+	"invalid_credentials":                 {Ar: "بيانات التسجيل غير صالحة", En: "Invalid credentials"},
+	"old_password_do_not_match":           {Ar: "كلمة المرور القديمة غير متطابقة", En: "Old password does not match"},
+	"image_type_png_only":                 {Ar: "نوع الصورة PNG فقط", En: "Image type PNG only"},
+	"category_already_exists":             {Ar: "الفئة موجودة بالفعل", En: "Category already exists"},
+	"username_or_email_already_exists":    {Ar: "اسم المستخدم أو البريد الإلكتروني موجود بالفعل", En: "Username or email already exists"},
+	"category_id_cannot_be_empty":         {Ar: "معرف الفئة لا يمكن أن يكون فارغًا", En: "Category ID cannot be empty"},
 }
 
 func (i I18n) Translate(lang string) string {
