@@ -11,7 +11,6 @@ import (
 	"github.com/iskaa02/sadeem-user-api/api_error"
 	"github.com/iskaa02/sadeem-user-api/auth"
 	"github.com/jmoiron/sqlx"
-	"github.com/labstack/echo/v4"
 	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -26,41 +25,6 @@ type User struct {
 type ChangePasswordParams struct {
 	NewPassword string `json:"new_password"`
 	OldPassword string `json:"old_password"`
-}
-
-func registerUserRoute(g *echo.Group, db *sqlx.DB) {
-	// require auth
-	g.GET("/me", func(c echo.Context) error {
-		id, _ := c.Get(auth.UserIDContextKey).(string)
-		isAdmin, _ := c.Get(auth.IsAdminContextKey).(bool)
-		u, err := getUser(db, id, isAdmin)
-		if err != nil {
-			return err
-		}
-		return c.JSON(200, u)
-	}, auth.RequireAuthMiddleWare)
-	g.PUT("/me", func(c echo.Context) error {
-		id := c.Get(auth.UserIDContextKey).(string)
-		u := &User{}
-		if err := c.Bind(&u); err != nil {
-			return err
-		}
-		return updateUser(db, id, u)
-	}, auth.RequireAuthMiddleWare)
-	g.POST("/me/change_password", func(c echo.Context) error {
-		id := c.Get(auth.UserIDContextKey).(string)
-		data := ChangePasswordParams{}
-		if err := c.Bind(&data); err != nil {
-			return err
-		}
-		return changePassword(db, id, data.OldPassword, data.NewPassword)
-	}, auth.RequireAuthMiddleWare)
-	g.POST("/me/change_image", func(c echo.Context) error {
-		id, _ := c.Get(auth.UserIDContextKey).(string)
-		return updateImage(db, c.Request(), id)
-	})
-
-	// anyone can see
 }
 
 type GetUserRes struct {
@@ -155,4 +119,43 @@ func listUsers(db *sqlx.DB, page int, searchQuery string) ([]User, error) {
 	sql, args := sb.Build()
 	err = db.Select(&users, sql, args...)
 	return users, err
+}
+
+func login(db *sqlx.DB, username, email, password string) (string, error) {
+	user := &User{}
+	var err error = nil
+	if username == "" && email == "" {
+		err = api_error.NewBadRequestError("missing_both_email_and_username", errors.New("Username and email can't be both empty"))
+	}
+	if email != "" {
+		err = db.Get(user, "SELECT * FROM users WHERE email=$1", email)
+	} else {
+		err = db.Get(user, "SELECT * FROM users WHERE username=$1", username)
+	}
+	if err != nil {
+		return "", err
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(password)); err != nil {
+		return "", err
+	}
+	token := auth.GenerateToken(user.ID)
+	return token, nil
+}
+
+func register(db *sqlx.DB, username, email, password string) (string, error) {
+	id := ""
+	_, err := mail.ParseAddress(email)
+	if err != nil {
+		return "", api_error.NewBadRequestError("invalid_email", err)
+	}
+	hashed_password, err := bcrypt.GenerateFromPassword([]byte(password), 10)
+	if err != nil {
+		return "", api_error.NewBadRequestError("", err)
+	}
+	err = db.Get(&id, "INSERT INTO users(username,email,hashed_password) VALUES($1,$2,$3) RETURNING id", username, email, hashed_password)
+	if err != nil {
+		return "", err
+	}
+	token := auth.GenerateToken(id)
+	return token, nil
 }

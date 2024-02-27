@@ -1,9 +1,7 @@
 package main
 
 import (
-	"net/http"
 	"os"
-	"strconv"
 
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/iskaa02/sadeem-user-api/api_error"
@@ -24,24 +22,9 @@ func main() {
 
 	e.Use(auth.LoadToken(db))
 	registerAdminRoutes(e.Group("/api", auth.RequireAdmin), db)
-	registerUserRoute(e.Group("/api/users", auth.RequireAuthMiddleWare), db)
+	registerUserRoute(e.Group("/api", auth.RequireAuthMiddleWare), db)
 	registerGuestRoute(e.Group("/api", auth.RequireNoAuthMiddleWare), db)
 
-	// anyone can see
-	e.GET("/api/category", func(c echo.Context) error {
-		isAdmin := c.Get(auth.IsAdminContextKey).(bool)
-		page, _ := strconv.Atoi(c.Request().URL.Query().Get("page"))
-		page -= 1
-		if page < 0 {
-			page = 0
-		}
-		searchQuery := c.Request().URL.Query().Get("q")
-		result, err := listCategories(db, isAdmin, page, searchQuery)
-		if err != nil {
-			return err
-		}
-		return c.JSON(http.StatusOK, result)
-	})
 	e.Static("/images", "./images")
 	e.Start("localhost:3000")
 }
