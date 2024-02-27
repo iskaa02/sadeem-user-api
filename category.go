@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/guregu/null"
 	"github.com/huandu/go-sqlbuilder"
 	"github.com/iskaa02/sadeem-user-api/api_error"
@@ -53,7 +51,6 @@ func deleteCategory(id string, db *sqlx.DB) error {
 func updateCategory(id string, name string, activated null.Bool, db *sqlx.DB) error {
 	sb := sqlbuilder.Update("category")
 	sb.Where(sb.EQ("id", id))
-	fmt.Println(activated.Valid)
 	if activated.Valid {
 		sb.SetMore(sb.Assign("activated", activated.Bool))
 	}
