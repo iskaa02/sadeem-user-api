@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"errors"
 	"net/http"
 	"net/mail"
@@ -22,6 +23,9 @@ func registerGuestRoute(g *echo.Group, db *sqlx.DB) {
 		}
 		token, err := login(db, data["username"], data["email"], data["password"])
 		if err != nil {
+			if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) || errors.Is(err, sql.ErrNoRows) {
+				return api_error.NewNotFoundError("invalid_credintials", err)
+			}
 			return api_error.NewBadRequestError("invalid_login_data", err)
 		}
 		return c.JSON(http.StatusOK, map[string]string{"token": token})
