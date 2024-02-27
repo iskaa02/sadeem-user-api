@@ -9,7 +9,6 @@ import (
 
 func GlobalErrorHandler(err error, c echo.Context) {
 	apiError, errorCasted := err.(ApiError)
-	fmt.Println(apiError.Err)
 	// fallback to default error handler
 	if !errorCasted {
 		fmt.Println(err)
@@ -25,7 +24,10 @@ func GlobalErrorHandler(err error, c echo.Context) {
 		if !ok {
 			i18n = translated_errors["something_went_wrong"]
 		}
-		err = c.JSON(apiError.Code, i18n.Translate(c.Request().Header.Get("Accept-Language")))
+		msg := struct {
+			Msg string `json:"message"`
+		}{Msg: i18n.Translate(c.Request().Header.Get("Accept-Language"))}
+		err = c.JSON(apiError.Code, msg)
 
 		if err != nil {
 			fmt.Println(err)
